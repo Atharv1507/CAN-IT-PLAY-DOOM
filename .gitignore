@@ -7,6 +7,8 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+# (lib/, var/, parts/, *.spec, ... removed from the stock list: they can hide submission code;
+#  validate.py fails if anything under submission/ is ignored)
 .Python
 build/
 develop-eggs/
@@ -14,11 +16,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
-parts/
 sdist/
-var/
 wheels/
 share/python-wheels/
 *.egg-info/
@@ -29,8 +27,6 @@ MANIFEST
 # PyInstaller
 #   Usually these files are written by a python script from a template
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
 
 # Installer logs
 pip-log.txt
@@ -153,7 +149,6 @@ activemq-data/
 .env
 .envrc
 .venv
-env/
 venv/
 ENV/
 env.bak/
@@ -221,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ViZDoom runtime config written to the working directory
+_vizdoom.ini
+
+# Local validator / scorer artifacts
+*.lmp
