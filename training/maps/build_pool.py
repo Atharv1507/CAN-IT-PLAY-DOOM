@@ -8,6 +8,7 @@ Stages (PLAN.md section 3):
     2 navigation  3-6 rooms with doors, few monsters, exit in the farthest room
     3 keycards    2-4 rooms, 1-2 locked doors, key usually in a side room (backtracking)
     4 full maps   Freedoom 2 maps + bigger generated maps with 2-3 locks and more monsters
+    5 medium      4-6 rooms, 1-2 locked doors, 1-3 monsters (between stages 3 and 4)
 Held-out maps (heldout=1) use different seeds / different Freedoom maps and are NEVER trained on.
 """
 
@@ -49,6 +50,9 @@ GENERATED = {
                           pad_p=0.8, room_size=(3, 5)), 2100, 12),
     "3e": (3, 40, 4, dict(n_rooms=(2, 2), n_locks=(1, 1), monsters=(0, 1), items=(0, 1), exit_p=1.0,
                           pad_p=0.8, room_size=(3, 4), key_near=True), 2800, 13),
+    # Stage 5 = MEDIUM maps (added H15): a step between keycard maps (2-4 rooms) and big maps (5-9 rooms /
+    # Freedoom). Fork 2 jumped straight to 70% big maps and the bot forgot keycard skills.
+    "5": (5, 40, 6, dict(n_rooms=(4, 6), n_locks=(1, 2), monsters=(1, 3), items=(1, 3), exit_p=1.0), 3500, 5),
 }
 
 

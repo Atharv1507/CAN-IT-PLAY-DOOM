@@ -75,7 +75,7 @@ wad,map,stage,episode_ticks,heldout
 training/maps/wads/key_small_01.wad,MAP01,3,2100,0
 ```
 
-- `stage`: 1 combat, 2 navigation, 3 keycards, 4 full maps. `heldout`: 1 = never used for training.
+- `stage`: 1 combat, 2 navigation, 3 keycards, 4 full maps, 5 medium (4-6 rooms, 1-2 locks; added H15). `heldout`: 1 = never used for training.
 - `wad` is a path relative to the repo root, or `@vizdoom/<file>.wad` (ViZDoom built-in scenario) or `@freedoom2` (the bundled IWAD), so the file works on every laptop. `training.envs.resolve_wad()` turns these into real paths.
 - Built by `python -m training.maps.build_pool [--check]` (deterministic). Generator: `training/maps/udmf_gen.py` (ASCII grid → UDMF map; `random_layout()` makes rooms, doors, locked doors, keys, exits, monsters).
 - Reward check: `python -m training.check_rewards` (scripted tests that every term fires + random play per stage).
@@ -204,3 +204,11 @@ PPO starting values: lr 2.5e-4 (rewards scaled by `reward_scale` 0.1 for PPO fro
 - `agent.py` gets only the observation dict: no game engine, no `privileged_state()`, no network, repo is read-only (scratch files to `/tmp` only).
 - Limits: 40 ms per decision on average, 1 CPU thread, 2 GB VRAM, 8 GB RAM, repo ≤ 1 GB, extra packages pinned in `submission/requirements.txt`.
 - A crash, timeout or invalid action freezes our player for the rest of the map → always `try/except` in `act()` with a safe fallback action.
+
+
+## 9. Late-night schedule (deadline 09:00)
+
+- Fork 2 (big-map heavy) caused forgetting of keycard skills -> stepped curriculum with medium maps, always ~50% smaller maps mixed in.
+- `run*_med1.json` (1 h, 40% medium) -> `run*_med2.json` (1 h, 40% medium, 20% big) -> `run*_big.json` (1.75 h, 40% big). Entropy bonus back to 0.01, saves every 15 min.
+- Between forks: evaluate all checkpoints on held-out maps, both laptops continue from the single best.
+- 07:30 final pick -> submission/weights/model.pt via Git LFS -> validate.py (+ --docker) -> freeze 08:45.

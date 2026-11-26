@@ -10,7 +10,7 @@
 - Every checkpoint plays the same maps with the same seeds, so scores are comparable.
 - "proxy" is OUR approximation of the official score (docs/EVALUATION.md categories), not the real one:
     per episode: 100*exit + 15*keys + 15*unlocks + 5*doors + 0.2*min(cells, 300) + 3*kills
-                 - 0.05*damage_taken - 20*dead;   overall = stage-weighted mean (stage 1..4 -> weight 1..4)
+                 - 0.05*damage_taken - 20*dead;   overall = stage-weighted mean (stage 1..4 -> weight 1..4, stage 5 medium -> 3.5)
 - Results are appended to training/results.csv (one row per checkpoint and stage, plus an "all" row).
 """
 
@@ -28,7 +28,7 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent
 RESULTS = REPO / "training" / "results.csv"
-STAGE_WEIGHT = {1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0}
+STAGE_WEIGHT = {1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0, 5: 3.5}  # 5 = medium maps
 COLUMNS = ["exit", "keys", "unlocks", "doors", "cells", "kills", "dead", "timeout", "damage_taken", "return", "proxy"]
 
 
@@ -170,7 +170,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--checkpoint", type=Path, nargs="+", required=True)
     ap.add_argument("--maps", choices=("heldout", "train", "all"), default="heldout")
-    ap.add_argument("--stages", type=int, nargs="+", default=[1, 2, 3, 4])
+    ap.add_argument("--stages", type=int, nargs="+", default=[1, 2, 3, 4, 5])
     ap.add_argument("--limit", type=int, default=None, help="at most N maps per stage (quick check)")
     ap.add_argument("--episodes", type=int, default=1, help="episodes per map (different seeds)")
     ap.add_argument("--workers", type=int, default=4, help="parallel games (M1 8 GB: max 4)")
