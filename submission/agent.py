@@ -17,8 +17,10 @@ WEIGHTS_DIR = SUBMISSION_DIR / "weights"
 if str(SUBMISSION_DIR) not in sys.path:
     sys.path.insert(0, str(SUBMISSION_DIR))
 
-from model import DoomNet, heads_to_buttons, obs_to_tensors  # noqa: E402
-
+try:
+    from .model import DoomNet, heads_to_buttons, obs_to_tensors
+except ImportError:
+    from model import DoomNet, heads_to_buttons, obs_to_tensors  # type: ignore[import-not-found]  # noqa: E402
 
 class DoomAgent:
     def __init__(self, observation_space, action_space, device: str):
@@ -53,8 +55,7 @@ class DoomAgent:
         self.eval_sample = bool(self.cfg.get("eval_sample", False))
         self._done_zero = torch.zeros(1, dtype=torch.float32, device=self.device)
         self._fallback = np.zeros(self.action_space.shape, dtype=np.int8)
-        self.state: dict[str, torch.Tensor] | None = None
-        self.reset()
+        self.state: dict[str, torch.Tensor] = self.model.initial_state(1, device=self.device)
 
     def reset(self) -> None:
         """Called before every map. Clear both GRU and episodic memory."""
@@ -63,8 +64,6 @@ class DoomAgent:
     def act(self, observation: dict) -> np.ndarray:
         """Return a MultiBinary action: int array of shape (9,) with values in {0, 1}."""
         try:
-            if self.state is None:
-                self.reset()
             with torch.no_grad():
                 obs_t = obs_to_tensors(observation, device=self.device)
                 logits, _, self.state = self.model(obs_t, self.state, self._done_zero)
