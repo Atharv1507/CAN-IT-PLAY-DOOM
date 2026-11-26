@@ -131,7 +131,7 @@ def obs_to_tensors(obs: dict, device="cpu") -> dict[str, torch.Tensor]   # batch
 def heads_to_buttons(move: int, turn: int, attack: int, use: int, weapon: int) -> np.ndarray  # (9,) int8
 ```
 
-- Heads → buttons (CONTRACT.md §3): move `0 none, 1 fwd, 2 back, 3 strafe L, 4 strafe R, 5 fwd+L, 6 fwd+R`; turn `0 none, 1 left, 2 right`; attack/use/weapon `0/1`.
+- Heads → buttons (CONTRACT.md §3): move `0 none, 1 fwd, 2 back, 3 strafe L, 4 strafe R, 5 fwd+L, 6 fwd+R`; turn `0 none, 1 left, 2 right`; attack/use `0/1`. **Weapon head is ignored from H8** (`SELECT_NEXT_WEAPON` always 0: the bot kept cycling to fists; Doom auto-switches on pickup). `agent.py` samples actions by default (greedy got stuck facing walls).
 - `value` is computed only when `priv` is given (training). `agent.py` never passes `priv`.
 
 ### 4.6 Checkpoints

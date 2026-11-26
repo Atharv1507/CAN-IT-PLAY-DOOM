@@ -86,7 +86,10 @@ def heads_to_buttons(move: int, turn: int, attack: int, use: int, weapon: int) -
 
     buttons[6] = 1 if int(attack) else 0
     buttons[7] = 1 if int(use) else 0
-    buttons[8] = 1 if int(weapon) else 0
+    # SELECT_NEXT_WEAPON is never pressed: the bot kept cycling pistol -> fists. Doom already switches
+    # to a better weapon automatically when one is picked up. (The weapon head is kept so old
+    # checkpoints still load; its output is ignored.)
+    buttons[8] = 0
     return buttons
 
 

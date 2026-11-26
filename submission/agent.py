@@ -52,7 +52,8 @@ class DoomAgent:
             self.model = DoomNet(self.cfg).to(self.device)
 
         self.model.eval()
-        self.eval_sample = bool(self.cfg.get("eval_sample", False))
+        # Sample from the policy by default: greedy (argmax) got stuck facing walls in held-out tests.
+        self.eval_sample = bool(self.cfg.get("eval_sample", True))
         self._done_zero = torch.zeros(1, dtype=torch.float32, device=self.device)
         self._fallback = np.zeros(self.action_space.shape, dtype=np.int8)
         self.state: dict[str, torch.Tensor] = self.model.initial_state(1, device=self.device)
