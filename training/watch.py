@@ -99,7 +99,7 @@ def main() -> None:
     ap.add_argument("--stage", type=int, default=3)
     ap.add_argument("--map", help="part of a map name from maps.csv, e.g. heldout_s3_002 or MAP14")
     ap.add_argument("--speed", type=float, default=1.0, help="2 = twice as fast")
-    ap.add_argument("--sample", action="store_true", help="sample actions instead of agent.py's default")
+    ap.add_argument("--greedy", action="store_true", help="always take the top action instead of sampling")
     ap.add_argument("--headless", action="store_true", help="no window (for testing)")
     ap.add_argument("--gif", type=Path, help="save an animated GIF (game view + overhead map) instead of a window")
     args = ap.parse_args()
@@ -119,7 +119,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as d:
         lmp = Path(d) / "episode.lmp"
         print(f"playing {row.name} (stage {row.stage}) with {args.checkpoint.name} ...")
-        stats = record_one(args.checkpoint.expanduser(), row, lmp, True if args.sample else None)
+        stats = record_one(args.checkpoint.expanduser(), row, lmp, False if args.greedy else None)
         print({k: stats[k] for k in ("exit", "keys", "unlocks", "doors", "cells", "kills", "dead", "steps")})
         tics = replay(lmp, row.wad, row.map, args.speed, args.headless, args.gif)
         print(f"replayed {tics} tics ({tics / 35:.0f} s of game time)")

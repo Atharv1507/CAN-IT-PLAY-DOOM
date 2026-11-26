@@ -58,7 +58,7 @@ def _load_agent(checkpoint: str, sample: bool | None):
     agent.model.load_state_dict(ckpt["model"])
     agent.model.eval()
     agent.cfg = cfg
-    agent.eval_sample = bool(cfg.get("eval_sample", False)) if sample is None else sample
+    agent.eval_sample = bool(cfg.get("eval_sample", True)) if sample is None else sample
     agent.reset()
     return agent
 
@@ -174,7 +174,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None, help="at most N maps per stage (quick check)")
     ap.add_argument("--episodes", type=int, default=1, help="episodes per map (different seeds)")
     ap.add_argument("--workers", type=int, default=4, help="parallel games (M1 8 GB: max 4)")
-    ap.add_argument("--sample", action="store_true", help="sample actions instead of agent.py's default")
+    ap.add_argument("--greedy", action="store_true", help="always take the top action instead of sampling (agent.py samples)")
     ap.add_argument("--record", type=Path, default=None, help="folder for .lmp replays (first episode per map)")
     ap.add_argument("--per-map", action="store_true", help="print one line per map")
     ap.add_argument("--no-save", action="store_true", help="don't append to training/results.csv")
@@ -190,7 +190,7 @@ def main() -> None:
         raise SystemExit("no maps selected")
     if args.record:
         args.record.mkdir(parents=True, exist_ok=True)
-    sample = True if args.sample else None
+    sample = False if args.greedy else None
     print(f"{len(rows)} maps x {args.episodes} episode(s), {args.workers} workers, maps={args.maps}")
 
     ranking = []
@@ -201,7 +201,7 @@ def main() -> None:
         by_stage, overall = summarize(results)
         print_table(f"{ck.name}  ({time.time() - t0:.0f} s)", by_stage, overall, results, args.per_map)
         if not args.no_save:
-            append_csv(ck, args.maps, args.sample, by_stage, overall, results)
+            append_csv(ck, args.maps, not args.greedy, by_stage, overall, results)
         ranking.append((overall, ck.name))
     if len(ranking) > 1:
         print("\nRanking (best first):")
