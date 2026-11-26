@@ -259,6 +259,14 @@ def train(args, maps, env, path):
             batches["advantages"] = advantages(
                 batches["rewards"], batches["values"], next_values, batches["done"],
             )
+            # Optional linear learning-rate decay over the run (config "lr_final_frac", e.g. 0.1): every fork so far
+            # peaked early and then drifted; smaller late updates keep the late checkpoints stable.
+            if config.get("lr_final_frac") is not None and args.seconds:
+                frac = min(1.0, (time.monotonic() - began) / args.seconds)
+                lr_now = config["lr"] * (1.0 - (1.0 - float(config["lr_final_frac"])) * frac)
+                for group in optimizer.param_groups:
+                    group["lr"] = lr_now
+                writer.add_scalar("ppo/lr", lr_now, steps)
             policy_loss, value_loss, entropy = update(
                 model, optimizer, batches, sequence_states, args.seq_len,
             )

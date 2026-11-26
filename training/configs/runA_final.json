@@ -1,0 +1,27 @@
+{
+  "run": "A",
+  "seed": 1,
+  "num_envs": 6,
+  "device": "cpu",
+  "lr": 0.00025,
+  "lr_final_frac": 0.1,
+  "rollout_len": 128,
+  "seq_len": 32,
+  "stage_mix": {
+    "1": 0.05,
+    "2": 0.15,
+    "3": 0.25,
+    "5": 0.25,
+    "4": 0.3
+  },
+  "entropy_coef": 0.01,
+  "ignore_weapon_head": true,
+  "reward_scale": 0.1,
+  "save_seconds": 900,
+  "start_hour": 18,
+  "hours": 3.75,
+  "reward_weights": {
+    "exit": 40,
+    "blind_fire": 0.01
+  }
+}

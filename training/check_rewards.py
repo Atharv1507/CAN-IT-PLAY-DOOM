@@ -43,7 +43,7 @@ TESTS = {
 }
 
 
-OPT_IN = {"progress": 0.1, "blind_fire": 0.005}
+OPT_IN = {"progress": 0.1, "blind_fire": 0.005, "progress_geodesic": 1.0}
 
 
 def scripted(tmp: Path) -> bool:
@@ -69,6 +69,18 @@ def scripted(tmp: Path) -> bool:
         print(f"{'PASS' if not missing else 'FAIL'}  {name:26s} fired={sorted(fired)}  return={total:+.2f}  "
               f"steps={t}" + (f"  progress={prog:+.2f}" if "progress" in must else "") + (f"  MISSING={sorted(missing)}" if missing else ""))
     return ok_all
+
+
+def geodesic_check(tmp: Path) -> bool:
+    """Walking distance must go around walls: in this U-shaped map the key is 3 cells away in a straight line
+    but 7 cells on foot."""
+    from training.envs import map_goals
+    wad = write_map(tmp / "u_shape.wad", ["#######", "#P#.r.#", "#.#.#.#", "#...#E#", "#######"])
+    g = map_goals(str(wad), "MAP01", any_path=True)
+    walk = int(g["key_fields"][0][0, 0])  # player start = top-left floor cell
+    ok = walk == 7
+    print(f"{'PASS' if ok else 'FAIL'}  walking distance            start->key = {walk} cells (straight line 3)")
+    return ok
 
 
 def random_play(episodes: int) -> None:
@@ -102,7 +114,7 @@ if __name__ == "__main__":
     ap.add_argument("--episodes", type=int, default=2)
     args = ap.parse_args()
     with tempfile.TemporaryDirectory() as d:
-        ok = scripted(Path(d))
+        ok = scripted(Path(d)) & geodesic_check(Path(d))
     random_play(args.episodes)
     print("\nALL SCRIPTED TESTS PASSED" if ok else "\nSOME SCRIPTED TESTS FAILED")
     raise SystemExit(0 if ok else 1)

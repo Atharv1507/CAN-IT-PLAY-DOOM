@@ -66,10 +66,77 @@ def map_goals(path: str, map_name: str, any_path: bool = False) -> dict | None:
                 exits.append(mid(ln))
         for d in doors.values():
             d["pos"] = tuple(np.mean(d.pop("pts"), axis=0))
-        if exits:  # one exit: an exit pad is surrounded by 4 exit lines, a switch is a single line
+        exit_lines = list(exits)
+        if exits:  # one exit: an exit pad is surrounded by 4 exit lines, a switch has 1-3 faces
             exits = [tuple(np.mean(exits, axis=0))]
-        _GOALS_CACHE[k] = {"keys": keys, "doors": doors, "exits": exits}
+        goals = {"keys": keys, "doors": doors, "exits": exits, "_exit_lines": exit_lines}
+        try:
+            _add_walk_distances(goals, b, verts)
+        except Exception:  # noqa: BLE001 - fall back to straight-line distance
+            goals["grid"] = None
+        _GOALS_CACHE[k] = goals
     return _GOALS_CACHE[k]
+
+
+CELL = 128  # our generator's grid size (training/maps/udmf_gen.py)
+
+
+def _add_walk_distances(goals: dict, b: dict, verts: list) -> None:
+    """Walking distance (in 128-unit cells, around walls, through doors) from every cell to each goal, for the
+    geodesic "progress" reward. Training-time scaffolding only - the agent never sees it."""
+    xs, ys = [v[0] for v in verts], [v[1] for v in verts]
+    minx, maxy = min(xs), max(ys)
+    ncols, nrows = int(round((max(xs) - minx) / CELL)), int(round((maxy - min(ys)) / CELL))
+    blocked = set()  # frozenset({cell_a, cell_b}) edges crossed by a one-sided (solid) line
+    for ln in b.get("linedef", []):
+        if "sideback" in ln:
+            continue
+        (x1, y1), (x2, y2) = verts[ln["v1"]], verts[ln["v2"]]
+        if x1 == x2:
+            c = int(round((x1 - minx) / CELL))
+            for r in range(int(round((maxy - max(y1, y2)) / CELL)), int(round((maxy - min(y1, y2)) / CELL))):
+                blocked.add(frozenset({(r, c - 1), (r, c)}))
+        else:
+            r = int(round((maxy - y1) / CELL))
+            for c in range(int(round((min(x1, x2) - minx) / CELL)), int(round((max(x1, x2) - minx) / CELL))):
+                blocked.add(frozenset({(r - 1, c), (r, c)}))
+    cell_of = lambda x, y: (min(nrows - 1, max(0, int((maxy - y) // CELL))), min(ncols - 1, max(0, int((x - minx) // CELL))))
+    start = [t for t in b.get("thing", []) if t.get("type") == 1]
+    if not start:
+        raise ValueError("no player start")
+    walk = np.zeros((nrows, ncols), bool)
+    todo = [cell_of(float(start[0]["x"]), float(start[0]["y"]))]
+    walk[todo[0]] = True
+    nbrs = lambda r, c: [(r + dr, c + dc) for dr, dc in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                         if 0 <= r + dr < nrows and 0 <= c + dc < ncols and frozenset({(r, c), (r + dr, c + dc)}) not in blocked]
+    while todo:
+        cur = todo.pop()
+        for n in nbrs(*cur):
+            if not walk[n]:
+                walk[n] = True
+                todo.append(n)
+
+    def field(*points):
+        cands = [cell_of(x + dx, y + dy) for x, y in points for dx in (-1, 1) for dy in (-1, 1)]  # edge point -> walkable side
+        cands = [c for c in dict.fromkeys(cands) if walk[c]]
+        if not cands:
+            return None
+        dist = np.full((nrows, ncols), -1, np.int32)
+        queue = list(cands)
+        for c in cands:
+            dist[c] = 0
+        for cur in queue:  # BFS (list grows while iterating)
+            for n in nbrs(*cur):
+                if walk[n] and dist[n] < 0:
+                    dist[n] = dist[cur] + 1
+                    queue.append(n)
+        return dist
+
+    goals["grid"] = (minx, maxy, nrows, ncols)
+    goals["key_fields"] = [field((x, y)) for x, y, _ in goals["keys"]]
+    for d in goals["doors"].values():
+        d["field"] = field(d["pos"])
+    goals["exit_fields"] = [field(*goals["_exit_lines"])] if goals["exits"] else []  # every exit line is a target
 
 REPO = Path(__file__).resolve().parent.parent
 MAPS_CSV = REPO / "training" / "maps" / "maps.csv"

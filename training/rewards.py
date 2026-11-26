@@ -29,6 +29,9 @@ DEFAULT_WEIGHTS = {
     # Added H12, opt-in (0 = off): set in a run config's reward_weights.
     "progress": 0.0,  # ~ +w per 128 units closer to the current goal (key -> its locked door -> exit)
     "blind_fire": 0.0,  # penalty per step with ATTACK pressed while no monster is visible
+    # 1 = measure "progress" as WALKING distance around walls (generated maps); 0 = straight line (old behaviour,
+    # which on walled maps rewards walking into the wall nearest the goal).
+    "progress_geodesic": 0.0,
 }
 TERMS = ("exit", "key", "door", "unlock", "cell", "kill", "damage", "death", "time", "progress", "blind_fire")
 GAMMA = 0.995  # same discount as PPO, so "progress" is potential-based shaping (does not change the best policy)
@@ -64,9 +67,7 @@ class RewardShaper:
         t = dict.fromkeys(TERMS, 0.0)
 
         if w["progress"] and self.goal is not None:  # goal was chosen before this step and stays fixed for it
-            gx, gy = self.goal
-            t["progress"] = w["progress"] * (GAMMA * -math.hypot(priv["x"] - gx, priv["y"] - gy) / 128.0
-                                             + self._goal_dist / 128.0)
+            t["progress"] = w["progress"] * (GAMMA * -self._dist(priv, self.goal) + self._goal_dist)
         if blind_fire:
             self.stats["blind_fire"] += 1
             t["blind_fire"] = -w["blind_fire"]
@@ -133,17 +134,31 @@ class RewardShaper:
             return None
         held = lambda lock: any(priv["keys"][i] > 0 for i in LOCK_KEYS.get(lock, ()))
         closed = [lock for lock, d in g["doors"].items() if d["sectors"] & self.closed_doors]
-        x, y = priv["x"], priv["y"]
-        cands = [d["pos"] for lock, d in g["doors"].items() if lock in closed and held(lock)]
+        geo = self.w["progress_geodesic"] and g.get("grid")
+        kf = g.get("key_fields") or [None] * len(g["keys"])
+        ef = g.get("exit_fields") or [None] * len(g["exits"])
+        cands = [(d["pos"], d.get("field") if geo else None) for lock, d in g["doors"].items() if lock in closed and held(lock)]
         if closed and not cands:
-            cands = [(kx, ky) for kx, ky, lock in g["keys"] if lock in closed and not held(lock)]
+            cands = [((kx, ky), kf[i] if geo else None) for i, (kx, ky, lock) in enumerate(g["keys"])
+                     if lock in closed and not held(lock)]
         if not cands:
-            cands = list(g["exits"])
+            cands = [(p, ef[i] if geo else None) for i, p in enumerate(g["exits"])]
         if not cands:
             return None
-        goal = min(cands, key=lambda p: math.hypot(x - p[0], y - p[1]))
-        self._goal_dist = math.hypot(x - goal[0], y - goal[1])
+        goal = min(cands, key=lambda gf: self._dist(priv, gf))
+        self._goal_dist = self._dist(priv, goal)
         return goal
+
+    def _dist(self, priv: dict, goal) -> float:
+        """Distance to a goal in 128-unit cells: walking distance if a field exists, else straight line."""
+        (gx, gy), fld = goal
+        if fld is not None:
+            minx, maxy, nrows, ncols = self.goals["grid"]
+            r = min(nrows - 1, max(0, int((maxy - priv["y"]) // 128)))
+            c = min(ncols - 1, max(0, int((priv["x"] - minx) // 128)))
+            if fld[r, c] >= 0:
+                return float(fld[r, c])
+        return math.hypot(priv["x"] - gx, priv["y"] - gy) / 128.0
 
     @property
     def cells_visited(self) -> int:

@@ -212,3 +212,9 @@ PPO starting values: lr 2.5e-4 (rewards scaled by `reward_scale` 0.1 for PPO fro
 - `run*_med1.json` (1 h, 40% medium) -> `run*_med2.json` (1 h, 40% medium, 20% big) -> `run*_big.json` (1.75 h, 40% big). Entropy bonus back to 0.01, saves every 15 min.
 - Between forks: evaluate all checkpoints on held-out maps, both laptops continue from the single best.
 - 07:30 final pick -> submission/weights/model.pt via Git LFS -> validate.py (+ --docker) -> freeze 08:45.
+
+## 10. Final run (04:30-08:15, both laptops, 3.75 h)
+
+- `runA_final.json`: no progress reward (safe baseline). `runB_final.json`: progress reward measured as WALKING distance (`progress_geodesic`; straight-line distance rewarded walking into walls).
+- Both: map mix 5% fight / 15% nav / 25% keycard / 25% medium / 30% big (smaller maps always mixed in against forgetting), learning rate decays linearly 2.5e-4 -> 2.5e-5 (`lr_final_frac` 0.1; every fork peaked early then drifted), blind_fire 0.01 (0.005 did not reduce wasted shots), entropy 0.01, saves every 15 min.
+- 08:15: evaluate all checkpoints + current submission -> best into submission/weights/model.pt -> validate (+ docker --no-gpu) -> push before 09:00.
