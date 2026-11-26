@@ -61,8 +61,10 @@ The wrapper's `reward` is a basic default for convenience. Shape your own reward
 
 ## Hardware at evaluation
 
-One NVIDIA **RTX 3090 (24 GB)** shared between evaluation workers. Plan for ≤ 6 GB VRAM
-per agent *(draft)* and fast inference (see [timeouts](docs/EVALUATION.md#timeouts)).
+One NVIDIA **RTX 3090 (24 GB)** shared between evaluation workers. Each agent gets **2 GB VRAM,
+8 GB RAM and 1 CPU thread**, so keep models compact and inference fast
+(see [hardware](docs/EVALUATION.md#hardware) and [timeouts](docs/EVALUATION.md#timeouts)).
+`validate.py` runs your agent under the same CPU/RAM limits and reports GPU memory.
 
 ## Documentation
 

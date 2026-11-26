@@ -320,6 +320,11 @@ def _error(where: str, exc: BaseException) -> tuple[dict, None]:
 
 def serve(socket_path: str, repo: str, device: str = "auto") -> int:
     from . import CONTRACT_VERSION
+    from .limits import THREAD_ENV
+
+    # One CPU per agent: libraries loaded from here on (torch, jax, ...) start a single compute
+    # thread. The scorer and validate.py also set these before this process starts (for numpy).
+    os.environ.update(THREAD_ENV)
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     for _ in range(100):

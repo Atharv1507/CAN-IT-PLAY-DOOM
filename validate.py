@@ -249,6 +249,58 @@ class VramSampler(threading.Thread):
         self._stop.set()
 
 
+class RamSampler(threading.Thread):
+    """Peak resident memory (RSS) of the agent process and its children, from /proc (Linux)."""
+
+    def __init__(self, pid: int):
+        super().__init__(daemon=True)
+        self.pid, self.peak_mb, self._stop = pid, 0, threading.Event()
+        self.supported = Path(f"/proc/{pid}/status").exists()
+
+    @staticmethod
+    def _rss_kb(pid: int) -> int:
+        try:
+            for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+        except (OSError, ValueError, IndexError):
+            pass
+        return 0
+
+    def _tree(self) -> list[int]:
+        children: dict[int, list[int]] = {}
+        for d in Path("/proc").iterdir():
+            if d.name.isdigit():
+                try:
+                    ppid = int((d / "stat").read_text().rsplit(")", 1)[1].split()[1])
+                except (OSError, ValueError, IndexError):
+                    continue
+                children.setdefault(ppid, []).append(int(d.name))
+        out, todo = [], [self.pid]
+        while todo:
+            p = todo.pop()
+            out.append(p)
+            todo += children.get(p, [])
+        return out
+
+    def run(self) -> None:
+        if not self.supported:
+            return
+        while not self._stop.wait(0.25):
+            self.peak_mb = max(self.peak_mb, sum(self._rss_kb(p) for p in self._tree()) // 1024)
+
+    def stop(self) -> None:
+        self._stop.set()
+
+
+def one_cpu() -> set[int] | None:
+    """The CPU the agent is pinned to, like the scorer's 1-CPU limit (None if not possible here)."""
+    if not hasattr(os, "sched_getaffinity"):
+        return None
+    cpus = sorted(os.sched_getaffinity(0))
+    return {cpus[-1]} if len(cpus) > 1 else None  # keep the other cores for the game engine
+
+
 def percentile(xs: list[float], q: float) -> float:
     s = sorted(xs)
     return s[min(len(s) - 1, int(q * (len(s) - 1) + 0.5))] if s else 0.0
@@ -263,13 +315,21 @@ def dry_run(repo: Path, device: str, maps: list[str], ticks: int) -> bool:
     log_path = tmp / "agent.log"
     server = remote.listen(sock_path)
     log = open(log_path, "wb")
-    env_vars = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    env_vars = {**os.environ, "PYTHONUNBUFFERED": "1", **L.THREAD_ENV}
+    cpu = one_cpu()
     proc = subprocess.Popen(
         [sys.executable, "-m", "doom_env.remote", "serve", "--socket", str(sock_path), "--repo", str(repo), "--device", device],
         stdout=log, stderr=subprocess.STDOUT, env=env_vars, cwd=tmp,
+        preexec_fn=(lambda: os.sched_setaffinity(0, cpu)) if cpu else None,
     )
+    if cpu:
+        report(OK, "CPU limit", f"agent pinned to {L.CPU_THREADS} CPU (core {min(cpu)}), like the evaluation sandbox")
+    else:
+        report(WARN, "CPU limit", f"could not pin the agent to {L.CPU_THREADS} CPU here; evaluation gives it one CPU, so timings may look better than they will be")
     vram = VramSampler(proc.pid)
     vram.start()
+    ram = RamSampler(proc.pid)
+    ram.start()
     ok = True
     conn = None
     resolved_device = device
@@ -335,7 +395,13 @@ def dry_run(repo: Path, device: str, maps: list[str], ticks: int) -> bool:
             proc.kill()
             proc.wait()
         vram.stop()
+        ram.stop()
         log.close()
+    if ram.supported and ram.peak_mb:
+        status = FAIL if ram.peak_mb > L.MAX_RAM_MB else (WARN if ram.peak_mb > 0.8 * L.MAX_RAM_MB else OK)
+        report(status, "Peak RAM", f"{ram.peak_mb} MB resident (limit {L.MAX_RAM_MB} MB, including files written to /tmp)")
+    else:
+        report(WARN, "Peak RAM", f"could not be measured here (needs Linux /proc); the limit is {L.MAX_RAM_MB} MB")
     if vram.supported and vram.peak:
         report(OK if vram.peak <= L.MAX_VRAM_MB else FAIL, "Peak GPU memory", f"{vram.peak} MB (limit {L.MAX_VRAM_MB} MB)")
     elif vram.peak_total > 0 and resolved_device != "cpu":
@@ -372,9 +438,19 @@ def run_in_docker(repo: Path, image: str, gpus: bool, maps: list[str], ticks: in
             if subprocess.call(install) != 0:
                 report(FAIL, "requirements.txt", "installing it in the official image failed (see output above)")
                 return 1
+        # The agent's RAM and CPU limits are checked inside (peak RSS, pinned to one core). The
+        # container also runs this validator and the game engine, hence the extra memory and no --cpus.
+        try:
+            from doom_env.limits import MAX_RAM_MB
+        except ImportError:  # --docker on a host without doom_env installed
+            MAX_RAM_MB = 8192
+        mem = f"{MAX_RAM_MB + 2048}m"
         cmd = [
             "docker", "run", "--rm", *user, "--network", "none", "--read-only",
-            "--tmpfs", "/tmp:exec,size=2g", "-e", "HOME=/tmp", "-e", "PYTHONPATH=/deps", "-w", "/tmp",
+            "--memory", mem, "--memory-swap", mem, "--pids-limit", "512",
+            "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+            "--tmpfs", "/tmp:exec,size=2g", "--shm-size", "2g",
+            "-e", "HOME=/tmp", "-e", "PYTHONPATH=/deps", "-w", "/tmp",
             "-v", f"{repo}:/submission:ro", "-v", f"{deps}:/deps:ro",
             "-v", f"{ROOT / 'validate.py'}:/validator/validate.py:ro",
         ]
