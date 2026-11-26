@@ -1,0 +1,19 @@
+{
+  "run": "B",
+  "seed": 2,
+  "num_envs": 6,
+  "device": "cpu",
+  "lr": 0.00025,
+  "rollout_len": 128,
+  "seq_len": 32,
+  "stage_mix": {
+    "3": 0.3,
+    "4": 0.7
+  },
+  "reward_weights": {
+    "novelty": 0.2,
+    "kill": 0.5
+  },
+  "start_hour": 14,
+  "hours": 3
+}
