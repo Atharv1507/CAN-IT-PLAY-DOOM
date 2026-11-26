@@ -29,6 +29,10 @@ No dataset is provided. Your agent learns by interacting with the engine.
 4. Put weights in `submission/weights/` (Git LFS) and training code in `training/`.
 5. Run `python validate.py --docker` and submit your repo URL.
 
+**Platforms:** Linux (x86-64/ARM), macOS on Apple Silicon (macOS 15+) and Windows (x86-64) all
+work with `uv sync` and `validate.py`. Intel Macs have no `vizdoom` 1.3.3 wheel: use Docker or a
+Linux machine. Evaluation runs on Linux, so `validate.py --docker` is the closest check.
+
 ## Repository layout
 
 ```
