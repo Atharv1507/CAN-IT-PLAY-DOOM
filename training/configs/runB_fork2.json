@@ -13,10 +13,14 @@
   "reward_weights": {
     "cell": 0.2,
     "kill": 0.5,
-    "exit": 40
+    "exit": 40,
+    "progress": 0.1,
+    "blind_fire": 0.005
   },
   "start_hour": 14,
   "hours": 3,
   "reward_scale": 0.1,
-  "save_seconds": 1200
+  "save_seconds": 1200,
+  "entropy_coef": 0.005,
+  "ignore_weapon_head": true
 }

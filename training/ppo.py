@@ -51,14 +51,26 @@ HEADS = ("move", "turn", "attack", "use", "weapon")
 HEAD_SIZES = (7, 3, 2, 2, 2)
 
 
+# Set once by train.py from the run config (defaults = original behaviour).
+SETTINGS = {"entropy_coef": 0.01, "active_heads": len(HEADS)}
+
+
+def configure(entropy_coef: float = 0.01, ignore_weapon_head: bool = False) -> None:
+    """ignore_weapon_head: leave the weapon head out of log-probabilities and entropy. heads_to_buttons never
+    presses SELECT_NEXT_WEAPON, so that head has no effect in the game and only adds noise to PPO."""
+    SETTINGS["entropy_coef"] = float(entropy_coef)
+    SETTINGS["active_heads"] = HEADS.index("weapon") if ignore_weapon_head else len(HEADS)
+
+
 def distributions(logits):
     return [torch.distributions.Categorical(logits=logits[head], validate_args=False)
             for head in HEADS]
 
 
 def log_probability(dists, actions):
+    n = SETTINGS["active_heads"]
     return torch.stack([dist.log_prob(action) for dist, action in zip(
-        dists, actions.unbind(-1), strict=True,
+        dists[:n], actions.unbind(-1)[:n], strict=True,
     )]).sum(dim=0)
 
 
@@ -98,7 +110,7 @@ def update(model, optimizer, batches, sequence_states, seq_len, epochs=4):
                                              batches["privileged"][rows, columns])
                 dists = distributions(logits)
                 log_probs.append(log_probability(dists, batches["actions"][rows, columns]))
-                entropies.append(torch.stack([dist.entropy() for dist in dists]).sum(dim=0))
+                entropies.append(torch.stack([dist.entropy() for dist in dists[:SETTINGS["active_heads"]]]).sum(dim=0))
                 values.append(value.reshape(-1))
             rows = starts[None, :] + torch.arange(seq_len, device=adv.device)[:, None]
             ratio = (torch.stack(log_probs) - batches["log_probs"][rows, columns]).exp()
@@ -106,7 +118,7 @@ def update(model, optimizer, batches, sequence_states, seq_len, epochs=4):
             policy_loss = -torch.minimum(ratio * advantage, ratio.clamp(0.8, 1.2) * advantage).mean()
             value_loss = (torch.stack(values) - returns[rows, columns]).square().mean()
             entropy = torch.stack(entropies).mean()
-            loss = policy_loss + 0.5 * value_loss - 0.01 * entropy
+            loss = policy_loss + 0.5 * value_loss - SETTINGS["entropy_coef"] * entropy
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 0.5)

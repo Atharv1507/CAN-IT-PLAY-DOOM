@@ -26,8 +26,14 @@ DEFAULT_WEIGHTS = {
     "damage": 0.01,  # per HP of damage taken (penalty)
     "death": 5.0,  # dying (penalty)
     "time": 0.001,  # per step (penalty, so it hurries)
+    # Added H12, opt-in (0 = off): set in a run config's reward_weights.
+    "progress": 0.0,  # ~ +w per 128 units closer to the current goal (key -> its locked door -> exit)
+    "blind_fire": 0.0,  # penalty per step with ATTACK pressed while no monster is visible
 }
-TERMS = ("exit", "key", "door", "unlock", "cell", "kill", "damage", "death", "time")
+TERMS = ("exit", "key", "door", "unlock", "cell", "kill", "damage", "death", "time", "progress", "blind_fire")
+GAMMA = 0.995  # same discount as PPO, so "progress" is potential-based shaping (does not change the best policy)
+# priv["keys"] order: blue card, yellow card, red card, blue skull, yellow skull, red skull
+LOCK_KEYS = {129: (2, 5), 130: (0, 3), 131: (1, 4)}  # ZDoom lock -> key flag indices that open it
 
 
 class RewardShaper:
@@ -36,7 +42,10 @@ class RewardShaper:
     def __init__(self, weights: dict | None = None):
         self.w = {**DEFAULT_WEIGHTS, **(weights or {})}
 
-    def reset(self, priv: dict) -> None:
+    def reset(self, priv: dict, goals: dict | None = None) -> None:
+        """goals (optional, for "progress"): {"keys": [(x, y, lock)], "doors": {lock: {"pos": (x, y), "sectors": set}},
+        "exits": [(x, y)]} - see training.envs.map_goals. Without goals the progress term stays 0."""
+        self.goals = goals
         self.kills = priv["kills"]
         self.damage = priv["damage_taken"]
         self.keys = float(np.sum(priv["keys"]))
@@ -47,11 +56,20 @@ class RewardShaper:
         self.closed_doors = set(np.flatnonzero((lock >= 0) & (gap < DOOR_OPEN_GAP)).tolist()) if lock is not None else set()
         self.lock = lock
         self.stats = {"exit": 0, "dead": 0, "timeout": 0, "kills": 0, "keys": 0, "doors": 0, "unlocks": 0,
-                      "cells": 1, "damage_taken": 0.0, "steps": 0, "return": 0.0}
+                      "cells": 1, "damage_taken": 0.0, "steps": 0, "return": 0.0, "blind_fire": 0}
+        self.goal = self._goal(priv)
 
-    def step(self, priv: dict) -> tuple[float, dict]:
+    def step(self, priv: dict, blind_fire: bool = False) -> tuple[float, dict]:
         w = self.w
         t = dict.fromkeys(TERMS, 0.0)
+
+        if w["progress"] and self.goal is not None:  # goal was chosen before this step and stays fixed for it
+            gx, gy = self.goal
+            t["progress"] = w["progress"] * (GAMMA * -math.hypot(priv["x"] - gx, priv["y"] - gy) / 128.0
+                                             + self._goal_dist / 128.0)
+        if blind_fire:
+            self.stats["blind_fire"] += 1
+            t["blind_fire"] = -w["blind_fire"]
 
         if priv["exit_reached"]:
             frac_left = 1.0 - priv["tic"] / max(1, priv["episode_ticks"])
@@ -101,10 +119,31 @@ class RewardShaper:
             self.stats["timeout"] = 1
         t["time"] = -w["time"]
 
+        self.goal = self._goal(priv)  # goal for the next step (changes after a key pickup or an unlock)
         r = float(sum(t.values()))
         self.stats["steps"] += 1
         self.stats["return"] += r
         return r, t
+
+    def _goal(self, priv: dict):
+        """Current target for the progress term: key of a still-locked door -> that door (once held) -> exit."""
+        g = self.goals
+        self._goal_dist = 0.0
+        if not g or not self.w["progress"]:
+            return None
+        held = lambda lock: any(priv["keys"][i] > 0 for i in LOCK_KEYS.get(lock, ()))
+        closed = [lock for lock, d in g["doors"].items() if d["sectors"] & self.closed_doors]
+        x, y = priv["x"], priv["y"]
+        cands = [d["pos"] for lock, d in g["doors"].items() if lock in closed and held(lock)]
+        if closed and not cands:
+            cands = [(kx, ky) for kx, ky, lock in g["keys"] if lock in closed and not held(lock)]
+        if not cands:
+            cands = list(g["exits"])
+        if not cands:
+            return None
+        goal = min(cands, key=lambda p: math.hypot(x - p[0], y - p[1]))
+        self._goal_dist = math.hypot(x - goal[0], y - goal[1])
+        return goal
 
     @property
     def cells_visited(self) -> int:

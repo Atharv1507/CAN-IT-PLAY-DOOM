@@ -327,6 +327,9 @@ def main():
     # PPO learns from reward * reward_scale (TensorBoard still shows unscaled rewards). With exit = 40
     # the critic's squared error dominated the shared network's update; 0.1 keeps it in the old range.
     args.reward_scale = float(config.get("reward_scale", 1.0))
+    from training import ppo as ppo_module
+
+    ppo_module.configure(config.get("entropy_coef", 0.01), bool(config.get("ignore_weapon_head", False)))
     if not 1 <= args.workers <= 8:
         parser.error("Worker count must be in 1..8 on Laptop A")
     counts = (args.horizon, args.seq_len, args.save_seconds, args.steps, args.seconds, args.benchmark)

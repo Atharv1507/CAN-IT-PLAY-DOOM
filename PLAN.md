@@ -109,6 +109,8 @@ Ground truth comes from `env.privileged_state()` (position, kills, items, keys, 
 | damage taken | −0.01 per HP |
 | death | −5 |
 | time | −0.001 per step |
+| progress (opt-in, from fork 2) | +0.1 per 128 units closer to the current goal: key → its locked door → exit (generated maps only; potential-based) |
+| blind_fire (opt-in, from fork 2) | −0.005 per step with ATTACK pressed and no monster visible |
 
 - Door opened = a sector with `door_lock >= 0` whose `ceiling − floor` rises above 56 for the first time. Locked = `door_lock > 0`.
 - Run B variant weights: novelty ×2, kill ×0.5 (Person 1 puts these in `runB.json`).
@@ -158,7 +160,7 @@ python validate.py
 ```
 
 Config (`training/configs/runA.json`): `run, seed, num_envs (6–8), device (cpu|mps), stage_mix, reward_weights, lr, rollout_len, seq_len, hours`.
-PPO starting values: lr 2.5e-4 (rewards scaled by `reward_scale` 0.1 for PPO from H10; forks save every 20 min), gamma 0.995, GAE λ 0.95, clip 0.2, entropy 0.01, 4 epochs, 4 minibatches, rollout 128 steps, sequence length 32 (store the GRU + memory state at the start of each sequence).
+PPO starting values: lr 2.5e-4 (rewards scaled by `reward_scale` 0.1 for PPO from H10; forks save every 20 min; fork 2: `entropy_coef` 0.005 and `ignore_weapon_head` true), gamma 0.995, GAE λ 0.95, clip 0.2, entropy 0.01, 4 epochs, 4 minibatches, rollout 128 steps, sequence length 32 (store the GRU + memory state at the start of each sequence).
 
 ## 5. Timeline
 

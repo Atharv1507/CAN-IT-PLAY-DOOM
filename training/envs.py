@@ -31,6 +31,46 @@ from doom_env.wrapper import IWAD
 
 from training.rewards import RewardShaper, priv_vector
 
+ENEMY_TYPES = {i for i, name in enumerate(S.ENTITY_TYPES) if name.startswith("enemy")}
+KEY_THING_LOCK = {13: 129, 38: 129, 5: 130, 40: 130, 6: 131, 39: 131}  # thing type -> ZDoom lock it opens
+_GOALS_CACHE: dict = {}
+
+
+def map_goals(path: str, map_name: str, any_path: bool = False) -> dict | None:
+    """Key / locked-door / exit positions of one of OUR generated UDMF maps (None for other maps).
+    Training only: used by the "progress" reward term. any_path=True is for tests with temp maps."""
+    p = Path(path).resolve()
+    if not any_path and (REPO / "training" / "maps" / "wads") not in p.parents:
+        return None
+    k = (str(p), map_name)
+    if k not in _GOALS_CACHE:
+        from doom_env.mapinfo import parse_udmf
+        from doom_env.wad import map_lumps, read_wad
+
+        b = parse_udmf(map_lumps(read_wad(p), map_name)["TEXTMAP"].decode())
+        verts = [(float(v.get("x", 0)), float(v.get("y", 0))) for v in b.get("vertex", [])]
+        sides = b.get("sidedef", [])
+        mid = lambda ln: ((verts[ln["v1"]][0] + verts[ln["v2"]][0]) / 2, (verts[ln["v1"]][1] + verts[ln["v2"]][1]) / 2)
+        keys = [(float(t["x"]), float(t["y"]), KEY_THING_LOCK[t["type"]]) for t in b.get("thing", [])
+                if t.get("type") in KEY_THING_LOCK]
+        doors: dict = {}
+        exits = []
+        for ln in b.get("linedef", []):
+            sp = int(ln.get("special", 0) or 0)
+            if sp == 13:
+                d = doors.setdefault(int(ln.get("arg3", 0)), {"pts": [], "sectors": set()})
+                d["pts"].append(mid(ln))
+                if "sideback" in ln:
+                    d["sectors"].add(int(sides[ln["sideback"]]["sector"]))
+            elif sp == 243:
+                exits.append(mid(ln))
+        for d in doors.values():
+            d["pos"] = tuple(np.mean(d.pop("pts"), axis=0))
+        if exits:  # one exit: an exit pad is surrounded by 4 exit lines, a switch is a single line
+            exits = [tuple(np.mean(exits, axis=0))]
+        _GOALS_CACHE[k] = {"keys": keys, "doors": doors, "exits": exits}
+    return _GOALS_CACHE[k]
+
 REPO = Path(__file__).resolve().parent.parent
 MAPS_CSV = REPO / "training" / "maps" / "maps.csv"
 
@@ -72,7 +112,8 @@ class TrainingEnv(gym.Env):
     metadata = {"render_modes": []}
 
     def __init__(self, stage_mix: dict, reward_weights: dict | None = None, seed: int = 0,
-                 heldout: bool = False, maps: list[MapRow] | None = None, render_buffers: bool = False):
+                 heldout: bool = False, maps: list[MapRow] | None = None, render_buffers: bool = False,
+                 goals_any_path: bool = False):
         rows = maps if maps is not None else [m for m in load_maps() if m.heldout == heldout]
         mix = {int(k): float(v) for k, v in stage_mix.items() if float(v) > 0}
         self.by_stage = {s: [m for m in rows if m.stage == s] for s in mix}
@@ -87,6 +128,7 @@ class TrainingEnv(gym.Env):
         self.rng = np.random.default_rng(seed)
         self.shaper = RewardShaper(reward_weights)
         self.render_buffers = render_buffers
+        self.goals_any_path = goals_any_path
         self._env = None
         self._row: MapRow | None = None
 
@@ -110,13 +152,18 @@ class TrainingEnv(gym.Env):
         obs, _ = self._env.reset(seed=int(self.rng.integers(2**31)),
                                  options={"record_path": options["record_path"]} if options and "record_path" in options else None)
         priv = self._env.privileged_state()
-        self.shaper.reset(priv)
+        self.shaper.reset(priv, map_goals(row.path, row.map, self.goals_any_path) if self.shaper.w["progress"] else None)
+        self._obs = obs
         return obs, {"priv": priv_vector(priv, self.shaper.cells_visited), "map": row.name, "stage": row.stage}
 
     def step(self, action):
+        ents = self._obs["visible_entities"]
+        enemy_seen = any(int(t) in ENEMY_TYPES for t, m in zip(ents["entity_type"], ents["mask"]) if m)
+        blind = bool(np.asarray(action)[6]) and not enemy_seen  # ATTACK with no monster in the view it acted on
         obs, _default_reward, terminated, truncated, _ = self._env.step(action)
+        self._obs = obs
         priv = self._env.privileged_state()
-        reward, terms = self.shaper.step(priv)
+        reward, terms = self.shaper.step(priv, blind_fire=blind)
         info = {"priv": priv_vector(priv, self.shaper.cells_visited), "terms": terms}
         if terminated or truncated:
             info["episode_stats"] = {**self.shaper.stats, "map": self._row.name, "stage": self._row.stage}

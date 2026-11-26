@@ -29,7 +29,7 @@ TESTS = {
     # name: (grid, button policy, terms that must fire)
     # USE fires on button-down and re-pressing reverses a moving door, so pulse it every 30 steps
     "key + locked door + exit": (["#########", "#P.r.1.E#", "#########"],
-                                 lambda t: FWD_USE if t % 30 == 0 else FWD, {"key", "unlock", "cell", "exit"}),
+                                 lambda t: FWD_USE if t % 30 == 0 else FWD, {"key", "unlock", "cell", "exit", "progress"}),
     "normal door": (["#######", "#P.D..#", "#######"],
                     lambda t: FWD_USE if t % 30 == 0 else FWD, {"door", "cell"}),
     "exit switch": (["#####", "#P.X#", "#####"],
@@ -38,28 +38,36 @@ TESTS = {
     # firing wakes the monsters up; too many to survive with a pistol
     "damage + death": (["#########", "#P..dddd#", "#...dddd#", "#...gggg#", "#########"], lambda t: ATTACK,
                        {"damage", "death"}),
+    # opt-in terms (H12): firing at nothing is penalised; walking toward key -> door -> exit earns progress
+    "blind fire": (["#######", "#P....#", "#######"], lambda t: ATTACK, {"blind_fire"}),
 }
+
+
+OPT_IN = {"progress": 0.1, "blind_fire": 0.005}
 
 
 def scripted(tmp: Path) -> bool:
     ok_all = True
     for name, (grid, policy, must) in TESTS.items():
         wad = write_map(tmp / f"{abs(hash(name))}.wad", grid)
-        env = TrainingEnv({9: 1}, maps=[MapRow(str(wad), "MAP01", 9, 1400, False)])
+        env = TrainingEnv({9: 1}, OPT_IN, maps=[MapRow(str(wad), "MAP01", 9, 1400, False)], goals_any_path=True)
         env.reset(seed=0)
-        fired, total, t = set(), 0.0, 0
+        fired, total, t, prog = set(), 0.0, 0, 0.0
         while True:
             _, r, te, tr, info = env.step(policy(t))
             total += r
+            prog += info["terms"]["progress"]
             t += 1
             fired |= {k for k, v in info["terms"].items() if v != 0 and k != "time"}
             if te or tr:
                 break
         env.close()
         missing = must - fired
+        if "progress" in must and prog <= 0:
+            missing = missing | {"progress>0"}
         ok_all &= not missing
         print(f"{'PASS' if not missing else 'FAIL'}  {name:26s} fired={sorted(fired)}  return={total:+.2f}  "
-              f"steps={t}" + (f"  MISSING={sorted(missing)}" if missing else ""))
+              f"steps={t}" + (f"  progress={prog:+.2f}" if "progress" in must else "") + (f"  MISSING={sorted(missing)}" if missing else ""))
     return ok_all
 
 
