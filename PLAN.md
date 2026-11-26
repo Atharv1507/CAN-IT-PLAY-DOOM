@@ -76,7 +76,9 @@ training/maps/wads/key_small_01.wad,MAP01,3,2100,0
 ```
 
 - `stage`: 1 combat, 2 navigation, 3 keycards, 4 full maps. `heldout`: 1 = never used for training.
-- ViZDoom built-in scenarios (e.g. `defend_the_center.wad`, in `vizdoom.scenarios_path`) may be listed with the full path.
+- `wad` is a path relative to the repo root, or `@vizdoom/<file>.wad` (ViZDoom built-in scenario) or `@freedoom2` (the bundled IWAD), so the file works on every laptop. `training.envs.resolve_wad()` turns these into real paths.
+- Built by `python -m training.maps.build_pool [--check]` (deterministic). Generator: `training/maps/udmf_gen.py` (ASCII grid → UDMF map; `random_layout()` makes rooms, doors, locked doors, keys, exits, monsters).
+- Reward check: `python -m training.check_rewards` (scripted tests that every term fires + random play per stage).
 
 ### 4.3 Training env — `training/envs.py` (Person 2)
 
