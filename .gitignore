@@ -226,4 +226,3 @@ _vizdoom.ini
 # Team: local training artifacts
 runs/
 checkpoints/
-.DS_Store
