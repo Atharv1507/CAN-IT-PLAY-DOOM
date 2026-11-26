@@ -13,7 +13,8 @@
   },
   "reward_weights": {
     "cell": 0.2,
-    "kill": 0.5
+    "kill": 0.5,
+    "exit": 40
   },
   "start_hour": 10,
   "hours": 4
