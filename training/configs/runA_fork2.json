@@ -3,14 +3,12 @@
   "seed": 1,
   "num_envs": 6,
   "device": "cpu",
-  "lr": 0.0001,
+  "lr": 0.00025,
   "rollout_len": 128,
   "seq_len": 32,
   "stage_mix": {
-    "1": 0.1,
-    "2": 0.15,
-    "3": 0.4,
-    "4": 0.35
+    "3": 0.3,
+    "4": 0.7
   },
   "reward_weights": {
     "exit": 40
