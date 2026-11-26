@@ -56,5 +56,7 @@ It checks:
 2. `DoomAgent` imports cleanly and can be called as `DoomAgent(observation_space, action_space, device)`,
    `reset()`, `act(observation)`. `requirements.txt` follows the rules above.
 3. A full episode on the test map (or your own with `--map file.wad:MAP01`, repeatable) runs without crashing and returns valid actions.
-4. Init time, per-step latency, and per-map agent compute time are within the [timeouts](EVALUATION.md#timeouts).
-5. Peak GPU memory is reported (stay under the per-agent cap).
+4. Init time, per-step latency, and per-map agent compute time are within the [timeouts](EVALUATION.md#timeouts),
+   measured with your agent **pinned to one CPU core** and numeric libraries limited to one thread
+   (`OMP_NUM_THREADS=1` etc.), as at evaluation.
+5. Peak RAM (≤ 8 GB) and peak GPU memory (≤ 2 GB) are within the [per-agent limits](EVALUATION.md#hardware).
