@@ -24,7 +24,11 @@ from doom_env.wrapper import IWAD, SKILL
 from training.envs import load_maps, resolve_wad
 
 
-def replay(lmp: Path, wad: str, map_name: str, speed: float = 1.0, headless: bool = False) -> int:
+def replay(lmp: Path, wad: str, map_name: str, speed: float = 1.0, headless: bool = False,
+           gif: Path | None = None, every: int = 8) -> int:
+    """Replay an .lmp in a window, or (gif=...) save it as an animated GIF: game view + overhead map."""
+    if gif is not None:
+        headless = True
     g = vd.DoomGame()
     g.set_doom_game_path(IWAD)
     g.set_doom_scenario_path(resolve_wad(wad))
@@ -35,15 +39,39 @@ def replay(lmp: Path, wad: str, map_name: str, speed: float = 1.0, headless: boo
     g.set_render_hud(True)
     g.set_sound_enabled(False)
     g.set_window_visible(not headless)
+    if gif is not None:
+        g.set_screen_resolution(vd.ScreenResolution.RES_320X240)
+        g.set_screen_format(vd.ScreenFormat.RGB24)
+        g.set_automap_buffer_enabled(True)
+        g.set_automap_mode(vd.AutomapMode.OBJECTS_WITH_SIZE)
+        g.set_automap_rotate(False)
+        g.set_automap_render_textures(False)
     g.init()
     g.replay_episode(str(lmp))
-    tics = 0
+    tics, frames = 0, []
     while not g.is_episode_finished():
-        g.advance_action()
+        if gif is not None and tics % every == 0:
+            st = g.get_state()
+            if st is not None:
+                frames.append(np.concatenate([st.screen_buffer, st.automap_buffer], axis=1))
+        try:
+            g.advance_action()
+        except vd.ViZDoomErrorException:  # automap rendering can crash on the very last tic; frames are kept
+            break
         tics += 1
         if not headless:
             time.sleep(1 / (35 * speed))
-    g.close()
+    try:
+        g.close()
+    except Exception:  # noqa: BLE001
+        pass
+    if gif is not None and frames:
+        from PIL import Image
+
+        imgs = [Image.fromarray(f).quantize(colors=128) for f in frames]
+        ms = int(1000 * every / (35 * speed))
+        imgs[0].save(gif, save_all=True, append_images=imgs[1:], duration=ms, loop=0, optimize=True)
+        print(f"saved {gif} ({len(frames)} frames)")
     return tics
 
 
@@ -73,11 +101,12 @@ def main() -> None:
     ap.add_argument("--speed", type=float, default=1.0, help="2 = twice as fast")
     ap.add_argument("--sample", action="store_true", help="sample actions instead of agent.py's default")
     ap.add_argument("--headless", action="store_true", help="no window (for testing)")
+    ap.add_argument("--gif", type=Path, help="save an animated GIF (game view + overhead map) instead of a window")
     args = ap.parse_args()
 
     if args.lmp:
         meta = json.loads(args.lmp.with_suffix(".json").read_text())
-        tics = replay(args.lmp, meta["wad"], meta["map"], args.speed, args.headless)
+        tics = replay(args.lmp, meta["wad"], meta["map"], args.speed, args.headless, args.gif)
         print(f"replayed {tics} tics ({tics / 35:.0f} s of game time)")
         return
     if not args.checkpoint:
@@ -92,7 +121,7 @@ def main() -> None:
         print(f"playing {row.name} (stage {row.stage}) with {args.checkpoint.name} ...")
         stats = record_one(args.checkpoint.expanduser(), row, lmp, True if args.sample else None)
         print({k: stats[k] for k in ("exit", "keys", "unlocks", "doors", "cells", "kills", "dead", "steps")})
-        tics = replay(lmp, row.wad, row.map, args.speed, args.headless)
+        tics = replay(lmp, row.wad, row.map, args.speed, args.headless, args.gif)
         print(f"replayed {tics} tics ({tics / 35:.0f} s of game time)")
 
 
