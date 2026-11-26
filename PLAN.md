@@ -151,6 +151,9 @@ python -m training.train --config training/configs/runA.json                 # s
 python -m training.train --config training/configs/runA.json --resume        # after a crash/sleep
 python -m training.train --config training/configs/runA_fork1.json --init ~/doom-checkpoints/B_h10_12000000.pt   # fork
 python -m training.evaluate --checkpoint ~/doom-checkpoints/A_h10_12000000.pt --maps heldout --workers 4
+python -m training.evaluate --checkpoint A.pt B.pt --record replays/          # compare + ranking + replays
+python -m training.watch replays/<file>.lmp                                      # watch a replay in a window
+python -m training.watch --checkpoint ~/doom-checkpoints/A_h10_12000000.pt --stage 3   # play + watch now
 python validate.py
 ```
 
