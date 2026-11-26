@@ -35,27 +35,75 @@ SCENARIOS_STAGE2 = ["my_way_home.wad"]
 FREEDOOM_HELDOUT = {"MAP02", "MAP06", "MAP14", "MAP31"}
 FREEDOOM_MAX_SECTORS = 700
 
-# stage -> (count train, count heldout, layout kwargs, episode_ticks)
+# tag -> (stage, count train, count heldout, layout kwargs, episode_ticks, seed stage)
+# "2e"/"3e" are EASY maps (added H8): the bot reached exits/unlocks in only ~1% / ~0.5% of episodes on
+# the normal stage 2/3 maps, too rare to learn from. Easy maps: 2-3 small rooms, exit one or two rooms away
+# (mostly walk-on exit pads). Easy keycard maps: 2 small rooms, key 1-2 cells in front of the player at the
+# start, locked door out of the start room, exit behind it. They are mixed into stages 2 and 3.
 GENERATED = {
-    1: (30, 5, dict(n_rooms=(1, 2), n_locks=(0, 0), monsters=(3, 8), items=(2, 4), exit_p=0.5), 2100),
-    2: (40, 6, dict(n_rooms=(3, 6), n_locks=(0, 0), monsters=(0, 3), items=(0, 3), exit_p=1.0), 2800),
-    3: (50, 8, dict(n_rooms=(2, 4), n_locks=(1, 2), monsters=(0, 2), items=(0, 2), exit_p=1.0), 3500),
-    4: (20, 5, dict(n_rooms=(5, 9), n_locks=(2, 3), monsters=(4, 10), items=(2, 5), exit_p=1.0), 4200),
+    "1": (1, 30, 5, dict(n_rooms=(1, 2), n_locks=(0, 0), monsters=(3, 8), items=(2, 4), exit_p=0.5), 2100, 1),
+    "2": (2, 40, 6, dict(n_rooms=(3, 6), n_locks=(0, 0), monsters=(0, 3), items=(0, 3), exit_p=1.0), 2800, 2),
+    "3": (3, 50, 8, dict(n_rooms=(2, 4), n_locks=(1, 2), monsters=(0, 2), items=(0, 2), exit_p=1.0), 3500, 3),
+    "4": (4, 20, 5, dict(n_rooms=(5, 9), n_locks=(2, 3), monsters=(4, 10), items=(2, 5), exit_p=1.0), 4200, 4),
+    "2e": (2, 40, 4, dict(n_rooms=(2, 3), n_locks=(0, 0), monsters=(0, 1), items=(0, 1), exit_p=1.0,
+                          pad_p=0.8, room_size=(3, 5)), 2100, 12),
+    "3e": (3, 40, 4, dict(n_rooms=(2, 2), n_locks=(1, 1), monsters=(0, 1), items=(0, 1), exit_p=1.0,
+                          pad_p=0.8, room_size=(3, 4), key_near=True), 2800, 13),
 }
 
 
-def generate(stage: int, idx: int, heldout: bool, kw: dict) -> list[str]:
-    seed = 1_000_000 * (2 if heldout else 1) + 1000 * stage + idx
+def map_name(tag: str, idx: int, heldout: bool) -> str:
+    return f"{'heldout' if heldout else 'gen'}_s{tag}_{idx:03d}.wad"
+
+
+def generate(tag: str, idx: int, heldout: bool) -> list[str]:
+    stage, _, _, kw, _, seed_stage = GENERATED[tag]
+    seed = 1_000_000 * (2 if heldout else 1) + 1000 * seed_stage + idx
     rng = np.random.default_rng(seed)
     n_rooms = int(rng.integers(kw["n_rooms"][0], kw["n_rooms"][1] + 1))
     n_locks = int(rng.integers(kw["n_locks"][0], kw["n_locks"][1] + 1))
     if n_rooms < 4:
         n_locks = min(n_locks, 1)
     exit_kind = None if rng.random() < kw["exit_p"] else "none"
-    grid, angle = random_layout(rng, n_rooms, n_locks, kw["monsters"], kw["items"], exit_kind=exit_kind)
-    name = f"{'heldout' if heldout else 'gen'}_s{stage}_{idx:03d}.wad"
-    write_map(WADS / name, grid, rng, angle)
+    if exit_kind is None and "pad_p" in kw:
+        exit_kind = "pad" if rng.random() < kw["pad_p"] else "switch"
+    grid, angle = random_layout(rng, n_rooms, n_locks, kw["monsters"], kw["items"], exit_kind=exit_kind,
+                                room_size=kw.get("room_size", (3, 7)))
+    if kw.get("key_near"):
+        grid, angle = _key_in_front(grid, rng)
+    final = WADS / map_name(tag, idx, heldout)
+    tmp = write_map(final.with_suffix(".tmp"), grid, rng, angle)
+    tmp.replace(final)  # atomic swap
     return grid
+
+
+KEY_CHARS = set("rbyuvw")
+
+
+def _key_in_front(grid: list[str], rng: np.random.Generator) -> tuple[list[str], int]:
+    """Move the key next to the player start (1-2 cells away) and face the player towards it."""
+    g = [list(r) for r in grid]
+    (pr, pc), = [(r, c) for r, row in enumerate(g) for c, ch in enumerate(row) if ch == "P"]
+    keys = [(r, c) for r, row in enumerate(g) for c, ch in enumerate(row) if ch in KEY_CHARS]
+    if not keys:
+        return grid, 0
+    kr, kc = keys[0]
+    key = g[kr][kc]
+    # direction -> (dr, dc, Doom angle): east 0, north 90, west 180, south 270 (rows grow southwards)
+    dirs = [(0, 1, 0), (-1, 0, 90), (0, -1, 180), (1, 0, 270)]
+    spots = []
+    for dr, dc, ang in dirs:
+        for dist in (1, 2):
+            r, c = pr + dr * dist, pc + dc * dist
+            path_ok = all(g[pr + dr * k][pc + dc * k] == "." for k in range(1, dist + 1))
+            if path_ok:
+                spots.append((r, c, ang))
+    if not spots:
+        return grid, 0
+    r, c, ang = spots[int(rng.integers(len(spots)))]
+    g[kr][kc] = "."
+    g[r][c] = key
+    return ["".join(row) for row in g], ang
 
 
 def freedoom_rows() -> list[dict]:
@@ -69,22 +117,28 @@ def freedoom_rows() -> list[dict]:
 
 
 def build() -> list[dict]:
+    # Never delete-then-rewrite: a training run on this laptop may be loading these files right now.
+    # Each map is written to a temp file and atomically swapped in; stale maps are removed at the end.
     WADS.mkdir(parents=True, exist_ok=True)
-    for old in WADS.glob("*.wad"):
-        old.unlink()
     rows = [dict(wad=f"@vizdoom/{w}", map="MAP01", stage=1, episode_ticks=2100, heldout=0) for w in SCENARIOS_STAGE1]
     rows += [dict(wad=f"@vizdoom/{w}", map="MAP01", stage=2, episode_ticks=2100, heldout=0) for w in SCENARIOS_STAGE2]
-    for stage, (n_train, n_held, kw, ticks) in GENERATED.items():
+    for tag, (stage, n_train, n_held, _kw, ticks, _seed) in GENERATED.items():
         for heldout, n in ((0, n_train), (1, n_held)):
             for i in range(n):
-                generate(stage, i, bool(heldout), kw)
-                name = f"{'heldout' if heldout else 'gen'}_s{stage}_{i:03d}.wad"
+                generate(tag, i, bool(heldout))
+                name = map_name(tag, i, bool(heldout))
                 rows.append(dict(wad=f"training/maps/wads/{name}", map="MAP01", stage=stage, episode_ticks=ticks, heldout=heldout))
     rows += freedoom_rows()
-    with open(CSV, "w", newline="") as f:
+    tmp_csv = CSV.with_suffix(".csv.tmp")
+    with open(tmp_csv, "w", newline="") as f:
         wr = csv.DictWriter(f, fieldnames=["wad", "map", "stage", "episode_ticks", "heldout"])
         wr.writeheader()
         wr.writerows(rows)
+    tmp_csv.replace(CSV)
+    keep = {Path(r["wad"]).name for r in rows}
+    for stale in WADS.glob("*.wad"):
+        if stale.name not in keep:
+            stale.unlink()
     return rows
 
 
