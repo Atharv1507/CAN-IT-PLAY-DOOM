@@ -3,16 +3,20 @@
   "seed": 1,
   "num_envs": 6,
   "device": "cpu",
-  "lr": 0.00025,
+  "lr": 0.0001,
   "rollout_len": 128,
   "seq_len": 32,
   "stage_mix": {
-    "3": 0.3,
-    "4": 0.7
+    "1": 0.1,
+    "2": 0.15,
+    "3": 0.4,
+    "4": 0.35
   },
   "reward_weights": {
     "exit": 40
   },
   "start_hour": 14,
-  "hours": 3
+  "hours": 3,
+  "reward_scale": 0.1,
+  "save_seconds": 1200
 }

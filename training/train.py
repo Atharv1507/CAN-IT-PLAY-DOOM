@@ -232,7 +232,7 @@ def train(args, maps, env, path):
                     # Treat its tick cap as an absorbing horizon for this challenge.
                     rollout.append({
                         "obs": observation, "privileged": privileged, "starts": starts,
-                        "values": values, "actions": action, "rewards": tensor(reward.astype(np.float32)),
+                        "values": values, "actions": action, "rewards": tensor((reward * args.reward_scale).astype(np.float32)),
                         "log_probs": log_probability(dists, action), "done": tensor(done),
                     })
                     starts = rollout[-1]["done"]
@@ -324,6 +324,9 @@ def main():
     args.horizon, args.seq_len = config["rollout_len"], config["seq_len"]
     args.seconds = args.seconds if args.seconds is not None else config["hours"] * 3600
     args.save_seconds = config.get("save_seconds", 1800)
+    # PPO learns from reward * reward_scale (TensorBoard still shows unscaled rewards). With exit = 40
+    # the critic's squared error dominated the shared network's update; 0.1 keeps it in the old range.
+    args.reward_scale = float(config.get("reward_scale", 1.0))
     if not 1 <= args.workers <= 8:
         parser.error("Worker count must be in 1..8 on Laptop A")
     counts = (args.horizon, args.seq_len, args.save_seconds, args.steps, args.seconds, args.benchmark)

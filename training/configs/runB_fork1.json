@@ -3,7 +3,7 @@
   "seed": 2,
   "num_envs": 6,
   "device": "cpu",
-  "lr": 0.00025,
+  "lr": 0.00015,
   "rollout_len": 128,
   "seq_len": 32,
   "stage_mix": {
@@ -17,5 +17,7 @@
     "exit": 40
   },
   "start_hour": 10,
-  "hours": 4
+  "hours": 4,
+  "reward_scale": 0.1,
+  "save_seconds": 1200
 }

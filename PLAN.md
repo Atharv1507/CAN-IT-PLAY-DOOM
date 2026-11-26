@@ -158,7 +158,7 @@ python validate.py
 ```
 
 Config (`training/configs/runA.json`): `run, seed, num_envs (6–8), device (cpu|mps), stage_mix, reward_weights, lr, rollout_len, seq_len, hours`.
-PPO starting values: lr 2.5e-4, gamma 0.995, GAE λ 0.95, clip 0.2, entropy 0.01, 4 epochs, 4 minibatches, rollout 128 steps, sequence length 32 (store the GRU + memory state at the start of each sequence).
+PPO starting values: lr 2.5e-4 (forks: 1.5e-4 at H10, 1e-4 at H14; rewards scaled by `reward_scale` 0.1 for PPO from H10), gamma 0.995, GAE λ 0.95, clip 0.2, entropy 0.01, 4 epochs, 4 minibatches, rollout 128 steps, sequence length 32 (store the GRU + memory state at the start of each sequence).
 
 ## 5. Timeline
 
