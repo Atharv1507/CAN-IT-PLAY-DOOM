@@ -10,7 +10,9 @@
     "2": 0.3,
     "3": 0.7
   },
-  "reward_weights": {},
+  "reward_weights": {
+    "exit": 40
+  },
   "start_hour": 10,
   "hours": 4
 }

@@ -100,7 +100,7 @@ Ground truth comes from `env.privileged_state()` (position, kills, items, keys, 
 
 | Term | Start value |
 | --- | --- |
-| exit reached | +10 (+ up to +2 for remaining health/time) |
+| exit reached | +10 (+ up to +2 for remaining health/time); **set to 40 in all configs from H7** (with exploration paying ~10-20 per episode, +10 made wandering until timeout worth more than exiting) |
 | keycard picked up (each) | +3 |
 | door opened (first time per door sector) | +0.5 |
 | locked door opened (first time) | +3 |
