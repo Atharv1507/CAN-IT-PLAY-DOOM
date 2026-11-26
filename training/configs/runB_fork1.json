@@ -12,7 +12,7 @@
     "3": 0.7
   },
   "reward_weights": {
-    "novelty": 0.2,
+    "cell": 0.2,
     "kill": 0.5
   },
   "start_hour": 10,
